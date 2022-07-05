@@ -1,0 +1,463 @@
+---
+title: "Simulated LMER"
+author: "Dan Feeney"
+date: "8/19/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## setting up enviornment 
+```{r}
+# https://www.tjmahr.com/plotting-partial-pooling-in-mixed-effects-models/ provided a lot o
+# basic code and inspiration for this. While journals won't allow citing a blog, this was a great
+# resource
+rm(list=ls())
+library(tidyverse)
+library(lme4)
+library(emmeans)
+set.seed(5280)
+
+sampleSize <- 15
+noObs <- 10
+
+### Custom functions to be used
+createPowers <- function(baselinePwr, meanChg, sdChg){
+  
+# Baseline power for subjects and return 20 observations 
+  pwrList <- numeric(noObs)
+  for (i in 1:sampleSize){
+    tmpStart <- ((i-1)*noObs) + 1
+    tmpEnd <- (noObs) * i
+    pwrList[tmpStart:tmpEnd] <- baselinePwr[i] + rnorm(noObs, mean = meanChg, sd = sdChg)
+  }
+
+  return(pwrList)
+}
+
+
+testAnovaRand <- function(metric, df) {
+  
+  myformula <- as.formula(paste0(metric," ~ cond", " + (cond|sub)"))
+  myformula2 <- as.formula(paste0(metric, " ~ (1|sub)"))
+  
+  full.mod = lmer(myformula, data = df, REML = TRUE, na.action = "na.omit" )
+  red.mod = lmer(myformula2, data = df, REML = TRUE, na.action = "na.omit" )
+  
+  conditions.emm <- emmeans(full.mod, "cond", lmer.df = "satterthwaite")
+  #conditions.emm
+  contrast(conditions.emm, "trt.vs.ctrl", ref = "seated") 
+  
+  
+  newList <- list("randEffectMod" = summary(full.mod), "anovaBetweenMods" = anova(full.mod, red.mod),
+                  "contrasts" = conditions.emm, "Contrasts2" = contrast(conditions.emm, "trt.vs.ctrl", ref = "seated"))
+  return(newList)
+  
+}
+
+```
+
+```{r}
+
+simDat <- createPowers(400, 10, 30)
+
+```
+
+
+
+#simulating data
+```{r}
+# set fixed effect parameters. https://journals.sagepub.com/doi/full/10.1177/2515245920965119
+# set seed
+set.seed(5280)
+
+# set fixed effect parameters. https://journals.sagepub.com/doi/full/10.1177/2515245920965119
+
+beta_0 <- 800 # intercept; i.e., the grand mean. this would be avg pwr
+
+beta_1 <- 50 # slope; the effect of category this would be difference in pwr
+
+# set random effect parameters
+
+tau_0 <- 50 # by-subject random intercept sd. We assume this comes from a normal dist with  mean 0 and unknown SD. SD for random intercept by sub
+
+omega_0 <- 1 # by-item random intercept sd for seated and standing. by condition random intercept
+
+# set more random effect and error parameters
+
+tau_1 <- 25 # by-subject random slope sd for random slopes
+
+rho <- .3 # correlation between intercept and slope
+
+sigma <- 30 # residual (error) sd
+
+#But note that we are sampling two random effects for each subject s, a random intercept T0s and a random slope T1s. It is possible for these values to be positively or negatively correlated, in which case we should not sample them independently. For instance, perhaps people who are faster than average overall (negative random intercept) also show a smaller than average effect of the in-group/out-group manipulation (negative random slope) because they allocate less attention to the task. We can capture this by allowing for a small positive correlation between the two factors, rho, which we assign to be .2.
+
+# overall model: RTsi=β0+T0s+O0i+(β1+T1s)Xi+esi. The response time for subject s on item i, RTsi, is decomposed into a population grand mean, β0; a by-subject random intercept, T0s; a by-item random interce
+# set number of subjects and items
+
+n_subj <- 16 # number of subjects
+# pt, O0i; a fixed slope, β1; a by-subject random slope, T1s; and a trial-level residual, esi. Our data-generating process is fully determined by seven population parameters, all denoted by Greek letters: β0, β1, τ0, τ1, ρ, ω0, and σ (see Table 2). In the next section, we apply this data-generating process to simulate the sampling of subjects, items, and trials (encounters).
+
+
+n_seated <- 6 # number of seated observations
+
+n_standing <- 6 # number of standing observations
+
+#We need to create a table listing each item i, which category it is in, and its random effect, O0i:
+
+# simulate a sample of items
+
+# total number of items = n_ingroup +n_outgroup
+
+items <- data.frame(
+  item_id = seq_len(n_seated + n_standing),
+  category = rep(c("seated", "standing"), c(n_seated, n_standing)),
+  O_0i = rnorm(n = n_seated + n_seated, mean = 0, sd = omega_0)
+
+)
+
+# effect-code category. this encodes a predictor as to which category each sim belongs to. seated should be less pwr, standing higher
+
+items$X_i <- recode(items$category, "seated" = -0.5, "standing" = +0.5)
+#We will later multiply this effect-coded factor by the fixed effect of category (beta_1 = 50) to simulate data in which the powers differ by postrue
+
+# simulate a sample of subjects
+
+# calculate random intercept / random slope covariance
+
+covar <- rho * tau_0 * tau_1
+
+# put values into variance-covariance matrix
+
+cov_mx <- matrix(c(tau_0^2, covar, covar, tau_1^2),
+                 nrow = 2, byrow = TRUE)
+
+# generate the by-subject random effects
+
+subject_rfx <- MASS::mvrnorm(n = n_subj, 
+    mu = c(T_0s = 0, T_1s = 0),
+    Sigma = cov_mx)
+
+# combine with subject IDs
+
+subjects <- data.frame(subj_id = seq_len(n_subj),subject_rfx)
+
+
+# cross subject and item IDs; add an error term
+
+# nrow(.) is the number of rows in the table
+
+trials <- crossing(subjects, items) %>%
+  mutate(e_si = rnorm(nrow(.), mean = 0, sd = sigma)) %>%
+  select(subj_id, item_id, category, X_i, everything())
+
+# calculate the response variable
+
+dat_sim <- trials %>% 
+  mutate(pwr = beta_0 + T_0s + O_0i + (beta_1 + T_1s) * X_i + e_si) %>%
+  select(subj_id, item_id, category, X_i, pwr)
+
+# Visualize the data
+library(patchwork)
+p1 <- ggplot(data = dat_sim, aes(x = pwr, fill = category)) + geom_density() +
+  facet_wrap(~subj_id) + xlab('Power (W)') + ylab('Density') + ggtitle('LMEM Approach') + 
+  scale_fill_grey()
+  
+ggplot(data = dat_sim, aes(x = category, y = pwr, fill = category)) + geom_boxplot() +
+  geom_point(position=position_jitterdodge())
+
+dat_sim%>%
+  group_by(subj_id, category)%>%
+  summarize(
+    meanPow = mean(pwr)
+  ) %>%
+  ggplot(aes(x = category, y = meanPow)) +   
+  geom_point(aes(color=as.factor(subj_id))) + 
+  geom_line(aes(group = subj_id, color = as.factor(subj_id) )) +
+  theme_bw()
+ 
+
+p2 <- dat_sim%>%
+  group_by(subj_id, category)%>%
+  summarize(
+    meanPow = mean(pwr)
+  ) %>%
+  ggplot(aes(x = category, y = meanPow)) +   
+  geom_point(aes(color=category)) +
+  facet_wrap(~subj_id) + ylab('Mean Power (W)') +
+  xlab('Posture') + ggtitle('Averaged Data Approach') +
+  scale_color_grey() 
+
+p1 | p2
+```
+## Creating unbalanced dataset
+```{r}
+## to remove: subj 1 half of trials, subj
+
+
+
+```
+ 
+ 
+ 
+ 
+## create a LMER model
+```{r}
+# fit a linear mixed-effects model to data
+
+mod_sim <- lmer(pwr ~ category + (1 + category | subj_id), 
+                data = dat_sim)
+
+a <- summary(mod_sim, corr = FALSE)
+#a$coefficients[2]
+a
+
+nullMod <- lmer(pwr ~ (category|subj_id), 
+                data = dat_sim)
+
+aovRes <- anova(mod_sim, nullMod)
+aovRes$`Pr(>Chisq)`[2]
+
+```
+
+## Compare to only a linear model (worst choice)     
+```{r}
+# standard anova without accounting for within subjects has supremely low p-value
+wrongMod <- lm(pwr ~ category, data = dat_sim)
+wrongSum <- summary(wrongMod)
+wrongSum$coefficients[8]
+wrongSum
+```
+
+## better RM model taken into account
+```{r}
+# repeated measures error model is better #
+aovMod <- aov( pwr ~ category + Error(factor(subj_id)), data = dat_sim )#
+RMsum <- summary(aovMod)
+RMsum$`Error: Within`
+summary(aovMod)
+
+avgDat <- dat_sim %>%
+  group_by(subj_id, category) %>%
+  summarize( meanPwr = mean(pwr))
+
+t.test(meanPwr ~ category, data = avgDat, paired = TRUE)
+```
+
+## Visualizations of no pooling, complete pooling, and partial pooling
+```{r}
+dat_sim$Subject <- dat_sim$subj_id
+
+ggplot(data = dat_sim, mapping=aes(x=category, y=pwr, color = category))+
+  geom_point() + facet_wrap(~subj_id)
+  
+# fit a no pooling model
+df_no_pooling <- lmList(pwr ~ category | subj_id, dat_sim) %>% 
+  coef() %>% 
+  # Subject IDs are stored as row-names. Make them an explicit column
+  rownames_to_column("Subject") %>% 
+  rename(Intercept = `(Intercept)`, Slope_Cond = categorystanding) %>% 
+  add_column(Model = "No pooling")
+df_no_pooling$Subject <- as.integer(df_no_pooling$Subject)
+
+#fit a complete pooling mode
+m_pooled <- lm(pwr ~ category, dat_sim) 
+
+# Repeat the intercept and slope terms for each participant
+df_pooled <- tibble(
+  Model = "Complete pooling",
+  Subject = unique(dat_sim$subj_id),
+  Intercept = coef(m_pooled)[1], 
+  Slope_Cond = coef(m_pooled)[2]
+)
+
+head(df_pooled)
+```
+
+## compare models. No pooling is RM ANOVA, complete pooling is LM
+## 
+```{r}
+# https://www.linguisticsociety.org/sites/default/files/e-learning/class_3_slides.pdf
+# Join the raw data so we can use plot the points and the lines.
+df_models <- bind_rows(df_pooled, df_no_pooling) %>% 
+  left_join(dat_sim, by = "Subject")
+
+p_model_comparison <- ggplot(df_models) + 
+  aes(x = category, y = pwr) + ylab('Power (W)') +
+  # Set the color mapping in this layer so the points don't get a color
+  geom_abline(
+    aes(intercept = Intercept, slope = Slope_Cond, color = Model, linetype = Model),
+    size = .75
+  ) + 
+  geom_point() +
+  facet_wrap("Subject") +
+  theme(legend.position = "top", legend.justification = "left") +
+  scale_color_grey()
+
+p_model_comparison 
+
+```
+
+```{r}
+#mod_sim
+df_partial_pooling <- coef(mod_sim)[["subj_id"]] %>% 
+  rownames_to_column("Subject") %>% 
+  as_tibble() %>% 
+  rename(Intercept = `(Intercept)`, Slope_Cond = categorystanding) %>% 
+  add_column(Model = "Partial pooling")
+
+df_partial_pooling$Subject <- as.integer(df_partial_pooling$Subject)
+df_models <- bind_rows(df_pooled, df_no_pooling, df_partial_pooling) %>% 
+  left_join(dat_sim, by = "Subject")
+
+# Replace the data-set of the last plot
+part1 <- p_model_comparison %+% df_models
+```
+
+
+```{r}
+df_fixef <- tibble(
+  Model = "Partial pooling (average)",
+  Intercept = fixef(mod_sim)[1],
+  Slope_Cond = fixef(mod_sim)[2]
+)
+
+df_shrink <- df_pooled %>% 
+  distinct(Model, Intercept, Slope_Cond) %>% 
+  bind_rows(df_fixef)
+df_shrink
+
+df_pulled <- bind_rows(df_no_pooling, df_partial_pooling)
+
+part2 <- ggplot(df_pulled) + 
+  aes(x = Intercept, y = Slope_Cond, color = Model, shape = Model) + 
+  geom_point(size = 2) + 
+  geom_point(
+    data = df_shrink, 
+    size = 5,
+    show.legend = FALSE
+  ) + 
+  # Draw an arrow connecting the observations between models
+  geom_path(
+    aes(group = Subject, color = NULL), 
+    arrow = arrow(length = unit(.02, "npc")),
+    show.legend = FALSE
+  )  + 
+  ggtitle("Pooling of regression parameters") + 
+  xlab("Intercept estimate") + 
+  ylab("Slope estimate") +
+  scale_color_grey()
+
+part1 / part2
+```
+
+
+## Comparing effect size estimats 
+```{r}
+
+print("Estimated Effect Sizes")
+
+est_slope = df_pooled$Slope_Cond
+
+df_pooled$Subject
+
+ggplot(df_pooled) + 
+  aes(x=Intercept, y=Slope_Cond) + 
+  geom_point()
+
+print(paste("Pooled model = ", mean(est_slope) / sd(est_slope)))
+
+est_slope = df_no_pooling$Slope_Cond
+
+df_no_pooling$Subject
+
+ggplot(df_no_pooling) + 
+  aes(x=Intercept, y=Slope_Cond) + 
+  geom_point()
+
+print(paste("No-pooling model = ", mean(est_slope) / sd(est_slope)))
+
+est_slope = df_partial_pooling$Slope_Cond
+
+df_partial_pooling$Subject
+
+ggplot(df_partial_pooling) + 
+  aes(x=Intercept, y=Slope_Cond) + 
+  geom_point()
+
+print(paste("Partial-pooling model = ", mean(est_slope) / sd(est_slope)))
+
+a <- avgDat %>% filter(category=="seated")
+a <- a$meanPwr
+
+b <- avgDat %>% filter(category=="standing")
+b <- b$meanPwr
+
+print(paste("Paired t-test = ", mean(b-a) / sd(b-a)))
+
+
+
+```
+
+## plotting in R
+```{r}
+
+df_all <- bind_rows(df_pooled, df_no_pooling, df_partial_pooling)
+
+ggplot(df_all) + 
+  aes(x = Subject, y = Slope_Cond, color=Model) + 
+  geom_point(size = 2) + 
+  geom_point(
+    data = df_all, 
+    size = 2,
+    # Prevent size-5 point from showing in legend keys
+    show.legend = FALSE
+  ) +
+  scale_x_continuous(breaks=seq(0,15,1)) + 
+  theme(panel.grid.minor = element_blank()) + 
+  facet_grid(cols = vars(Model))
+
+
+```
+
+## add another fixed effect to show the model's ability to generalize
+```{r}
+
+dat_sim$footwear <- rep(c(rep('shoe1',3), rep('shoe2',3)),32)
+
+ggplot(dat_sim, aes(x = category, y = pwr, color = footwear, fill = footwear)) +
+  geom_point() + geom_jitter(width = 0.1, height = 0.1) + facet_wrap(~Subject) +
+  scale_color_manual(values=c("red","blue")) + ylab("Power (W)") + xlab("Posture")
+
+twoMod <- lmer(pwr ~ category + footwear + (category|Subject), data = dat_sim)
+summary(twoMod)
+```
+
+## conduct F-test between anova models. In this case, there is no estimated main effect of footwear but there is a main effect of category (seated or standing)
+```{r}
+
+fwMod <- lmer(pwr ~ category + footwear + (category|Subject), data = dat_sim)
+baseMod <- lmer(pwr ~ category + (category|Subject), data = dat_sim)
+anova(fwMod, baseMod)
+
+catMod <- lmer(pwr ~ category + footwear + (category|Subject), data = dat_sim)
+baseMod <- lmer(pwr ~ footwear + (category|Subject), data = dat_sim)
+anova(fwMod, baseMod)
+```
+
+
+## add interaction effects and plot them
+```{r}
+library(sjPlot)
+intMod <- lmer(pwr ~ category * footwear + (category|Subject), data = dat_sim)
+plot_model(intMod) 
+
+plot_model(intMod, type = 'pred', terms = c("category", "footwear"))
+
+summary(intMod)
+
+```
+
+
+
