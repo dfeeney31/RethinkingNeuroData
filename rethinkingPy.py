@@ -45,6 +45,8 @@ dat_unbal = dat_mess.copy()
 mask = dat_unbal[dat_unbal["subj_id"]==16].index
 dat_unbal = dat_unbal.drop(mask)
 
+dat_unbal.to_csv('C:/Users/daniel.feeney/OneDrive - Boa Technology Inc/Desktop/Rethinking Neuro Data Manuscript/Code/unbalDat.csv')
+dat_mess.to_csv('C:/Users/daniel.feeney/OneDrive - Boa Technology Inc/Desktop/Rethinking Neuro Data Manuscript/Code/messDat.csv')
 ############ plotting ################
 sns.displot(data=dat_sim, x="pwr", hue="category", col="subj_id",
             kind="kde", col_wrap=4, fill=True, alpha=0.5)
