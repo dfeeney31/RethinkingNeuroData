@@ -179,22 +179,11 @@ aovRes$`Pr(>Chisq)`[2]
 
 ```
 
-## Compare to only a linear model (worst choice)     
-```{r}
-# standard anova without accounting for within subjects has supremely low p-value
-wrongMod <- lm(pwr ~ category, data = dat_sim)
-wrongSum <- summary(wrongMod)
-wrongSum$coefficients[8]
-wrongSum
-```
+
 
 ## better RM model taken into account
 ```{r}
-# repeated measures error model is better #
-aovMod <- aov( pwr ~ category + Error(factor(subj_id)), data = dat_sim )#
-RMsum <- summary(aovMod)
-RMsum$`Error: Within`
-summary(aovMod)
+
 
 avgDat <- dat_sim %>%
   group_by(subj_id, category) %>%
@@ -274,15 +263,6 @@ df_models <- bind_rows(df_pooled, df_no_pooling, df_partial_pooling) %>%
 part1 <- p_model_comparison %+% df_models
 ```
 
-# Correlation to True powers
-```{r}
-dat_sim %>%
-  group_by(Subject, category) %>%
-  summarize(
-    xcor = 
-  )
-
-```
 
 ## Figure 3 and visualizing all 3 models to show shrinkage
 ```{r}
@@ -313,12 +293,13 @@ part2 <- ggplot(df_pulled) +
     arrow = arrow(length = unit(.02, "npc")),
     show.legend = FALSE
   )  + 
-  ggtitle("Pooling of regression parameters") + 
+  #ggtitle("Pooling of regression parameters") + 
   xlab("Intercept estimate") + 
   ylab("Slope estimate") +
-  scale_color_grey()
+  scale_color_grey() +
+  theme(legend.position="top")
 
-part1 / part2
+part1 | part2
 ```
 
 
@@ -430,7 +411,20 @@ summary(intMod)
 
 ```
 
- 
+## Compare to only a linear model (worst choice)     
+```{r}
+# complete pooling
+wrongMod <- lm(pwr ~ category, data = dat_sim)
+wrongSum <- summary(wrongMod)
+wrongSum$coefficients[8]
+wrongSum
+
+# repeated measures error model is better #
+aovMod <- aov( pwr ~ category + Error(factor(subj_id)), data = dat_sim )#
+RMsum <- summary(aovMod)
+RMsum$`Error: Within`
+summary(aovMod)
+```
  
 
 
