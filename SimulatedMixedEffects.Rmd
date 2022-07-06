@@ -16,53 +16,11 @@ rm(list=ls())
 library(tidyverse)
 library(lme4)
 library(emmeans)
+library(MuMIn)
+library(patchwork)
 set.seed(5280)
 
-sampleSize <- 15
-noObs <- 10
-
-### Custom functions to be used
-createPowers <- function(baselinePwr, meanChg, sdChg){
-  
-# Baseline power for subjects and return 20 observations 
-  pwrList <- numeric(noObs)
-  for (i in 1:sampleSize){
-    tmpStart <- ((i-1)*noObs) + 1
-    tmpEnd <- (noObs) * i
-    pwrList[tmpStart:tmpEnd] <- baselinePwr[i] + rnorm(noObs, mean = meanChg, sd = sdChg)
-  }
-
-  return(pwrList)
-}
-
-
-testAnovaRand <- function(metric, df) {
-  
-  myformula <- as.formula(paste0(metric," ~ cond", " + (cond|sub)"))
-  myformula2 <- as.formula(paste0(metric, " ~ (1|sub)"))
-  
-  full.mod = lmer(myformula, data = df, REML = TRUE, na.action = "na.omit" )
-  red.mod = lmer(myformula2, data = df, REML = TRUE, na.action = "na.omit" )
-  
-  conditions.emm <- emmeans(full.mod, "cond", lmer.df = "satterthwaite")
-  #conditions.emm
-  contrast(conditions.emm, "trt.vs.ctrl", ref = "seated") 
-  
-  
-  newList <- list("randEffectMod" = summary(full.mod), "anovaBetweenMods" = anova(full.mod, red.mod),
-                  "contrasts" = conditions.emm, "Contrasts2" = contrast(conditions.emm, "trt.vs.ctrl", ref = "seated"))
-  return(newList)
-  
-}
-
 ```
-
-```{r}
-
-simDat <- createPowers(400, 10, 30)
-
-```
-
 
 
 #simulating data
@@ -159,7 +117,6 @@ dat_sim <- trials %>%
   select(subj_id, item_id, category, X_i, pwr)
 
 # Visualize the data
-library(patchwork)
 p1 <- ggplot(data = dat_sim, aes(x = pwr, fill = category)) + geom_density() +
   facet_wrap(~subj_id) + xlab('Power (W)') + ylab('Density') + ggtitle('LMEM Approach') + 
   scale_fill_grey()
@@ -190,28 +147,29 @@ p2 <- dat_sim%>%
   scale_color_grey() 
 
 p1 | p2
+
 ```
-## Creating unbalanced dataset
+## loading unbalanced dat from python creation
 ```{r}
 ## to remove: subj 1 half of trials, subj
-
+dat_mess <- read.csv('C:/Users/daniel.feeney/OneDrive - Boa Technology Inc/Desktop/Rethinking Neuro Data Manuscript/Code/Data/messDat.csv')
+dat_unbal <- read.csv('C:/Users/daniel.feeney/OneDrive - Boa Technology Inc/Desktop/Rethinking Neuro Data Manuscript/Code/Data/unbalDat.csv')
 
 
 ```
- 
- 
- 
  
 ## create a LMER model
 ```{r}
+dat_sim$Subject <- dat_sim$subj_id
+
 # fit a linear mixed-effects model to data
 
 mod_sim <- lmer(pwr ~ category + (1 + category | subj_id), 
                 data = dat_sim)
-
+# derive output from lmer
 a <- summary(mod_sim, corr = FALSE)
-#a$coefficients[2]
-a
+r_sq <- r.squaredGLMM(mod_sim)
+
 
 nullMod <- lmer(pwr ~ (category|subj_id), 
                 data = dat_sim)
@@ -247,12 +205,13 @@ t.test(meanPwr ~ category, data = avgDat, paired = TRUE)
 
 ## Visualizations of no pooling, complete pooling, and partial pooling
 ```{r}
-dat_sim$Subject <- dat_sim$subj_id
 
 ggplot(data = dat_sim, mapping=aes(x=category, y=pwr, color = category))+
   geom_point() + facet_wrap(~subj_id)
   
 # fit a no pooling model
+no_pooling_mod <- lmList(pwr ~ category | subj_id, dat_sim)
+
 df_no_pooling <- lmList(pwr ~ category | subj_id, dat_sim) %>% 
   coef() %>% 
   # Subject IDs are stored as row-names. Make them an explicit column
@@ -315,7 +274,17 @@ df_models <- bind_rows(df_pooled, df_no_pooling, df_partial_pooling) %>%
 part1 <- p_model_comparison %+% df_models
 ```
 
+# Correlation to True powers
+```{r}
+dat_sim %>%
+  group_by(Subject, category) %>%
+  summarize(
+    xcor = 
+  )
 
+```
+
+## Figure 3 and visualizing all 3 models to show shrinkage
 ```{r}
 df_fixef <- tibble(
   Model = "Partial pooling (average)",
@@ -366,27 +335,27 @@ ggplot(df_pooled) +
   aes(x=Intercept, y=Slope_Cond) + 
   geom_point()
 
-print(paste("Pooled model = ", mean(est_slope) / sd(est_slope)))
+print(paste("Pooled model = ", mean(est_slope) / sd(est_slope))) #inf because sd of a single number is 0 
 
-est_slope = df_no_pooling$Slope_Cond
+est_slope_noPool = df_no_pooling$Slope_Cond
 
 df_no_pooling$Subject
 
 ggplot(df_no_pooling) + 
-  aes(x=Intercept, y=Slope_Cond) + 
-  geom_point()
+  aes(x=Intercept, y=Slope_Cond, label = Subject) + 
+  geom_point()+ geom_text(hjust = 1, vjust = 1)
 
-print(paste("No-pooling model = ", mean(est_slope) / sd(est_slope)))
+print(paste("No-pooling model = ", mean(est_slope_noPool) / sd(est_slope_noPool)))
 
-est_slope = df_partial_pooling$Slope_Cond
+est_slope_partialPool = df_partial_pooling$Slope_Cond
 
 df_partial_pooling$Subject
 
 ggplot(df_partial_pooling) + 
-  aes(x=Intercept, y=Slope_Cond) + 
-  geom_point()
+  aes(x=Intercept, y=Slope_Cond, label = Subject) + 
+  geom_point() + geom_text(hjust = 1, vjust = 1)
 
-print(paste("Partial-pooling model = ", mean(est_slope) / sd(est_slope)))
+print(paste("Partial-pooling model = ", mean(est_slope_partialPool) / sd(est_slope_partialPool)))
 
 a <- avgDat %>% filter(category=="seated")
 a <- a$meanPwr
@@ -406,7 +375,7 @@ print(paste("Paired t-test = ", mean(b-a) / sd(b-a)))
 df_all <- bind_rows(df_pooled, df_no_pooling, df_partial_pooling)
 
 ggplot(df_all) + 
-  aes(x = Subject, y = Slope_Cond, color=Model) + 
+  aes(x = Subject, y = Slope_Cond, color=Model, label = Subject) + 
   geom_point(size = 2) + 
   geom_point(
     data = df_all, 
@@ -414,6 +383,7 @@ ggplot(df_all) +
     # Prevent size-5 point from showing in legend keys
     show.legend = FALSE
   ) +
+  geom_text(vjust=1, hjust=1)+
   scale_x_continuous(breaks=seq(0,15,1)) + 
   theme(panel.grid.minor = element_blank()) + 
   facet_grid(cols = vars(Model))
@@ -421,6 +391,7 @@ ggplot(df_all) +
 
 ```
 
+# Appendix 
 ## add another fixed effect to show the model's ability to generalize
 ```{r}
 
@@ -459,5 +430,7 @@ summary(intMod)
 
 ```
 
+ 
+ 
 
 
