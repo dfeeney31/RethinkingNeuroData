@@ -183,7 +183,8 @@ for (noReps in 1:30){
 
 replicateStudy <- data.frame(meanVec, sdVec, c(1:30))
 names(replicateStudy)[3] <- 'NumReps'
-ggplot(replicateStudy, aes(x=NumReps, y = meanVec)) + geom_point()
+ggplot(replicateStudy, aes(x=NumReps, y = meanVec)) + geom_point() +
+  ylab('Sampling Error (|Z-Score|)') + xlab('Number of Replicates')
 ```
 
 ## loading unbalanced dat from python creation
@@ -408,6 +409,41 @@ ggplot(df_all) +
 
 
 ```
+
+## Comparing messy dataset & Figure 4
+```{r}
+library(ciTools)
+pp_mod <- lmer(pwr ~ category + (category|subj_id), data = dat_mess)
+summary(pp_mod)
+ciMod <- add_ci(dat_mess, pp_mod, alpha = 0.5)
+coefsPP <- coef(pp_mod)
+data.frame(coefsPP$subj_id)
+
+cp_mod <- lm(pwr ~ category, data = dat_mess)
+summary(np_mod)
+
+np_mod <- lmList(pwr ~ category | subj_id, dat_mess) # Will fail based on 
+np_mod
+
+# plotting Figure 4
+dat_mess$category <- as.factor(dat_mess$category)
+dat_mess$subj_id <- as.factor(dat_mess$subj_id) 
+
+
+ciMod %>%
+  arrange(pwr)%>%
+  group_by(subj_id, category) %>%
+  filter(category == 'standing')%>%
+  summarize(
+    meanP = mean(pwr),
+    predP = mean(pred),
+    u25 = mean(LCB0.25),
+    u75 = mean(UCB0.75))%>%
+  ggplot(aes(x = fct_reorder(subj_id, meanP), y = meanP, ymin=u25, ymax=u75)) + 
+  geom_point() + geom_errorbar()
+```
+
+
 
 # Appendix 
 ## add another fixed effect to show the model's ability to generalize
