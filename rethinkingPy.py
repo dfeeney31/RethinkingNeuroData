@@ -6,10 +6,11 @@ import seaborn as sns
 import arviz as az
 #import pymc3 as pm
 import bambi
-import pingouin as pg
-import graphviz
+#import pingouin as pg
+#import graphviz
 
-dat_sim = pd.read_csv('C:/Users/daniel.feeney/OneDrive - Boa Technology Inc/Desktop/Rethinking Neuro Data Manuscript/Code/passDat.csv')
+## Simualted data created in R and passed into python script to perserve strucutre
+dat_sim = pd.read_csv('C:/Users/daniel.feeney/OneDrive - Boa Technology Inc/Desktop/Rethinking Neuro Data Manuscript/Code/Data/passDat.csv')
 
 ########### messy data ##########
 
