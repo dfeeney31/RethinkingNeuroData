@@ -123,8 +123,8 @@ dat_sim <- trials %>%
 
 # Visualize the data
 p1 <- ggplot(data = dat_sim, aes(x = pwr, fill = category)) + geom_density() +
-  facet_wrap(~subj_id) + xlab('Power (W)') + ylab('Density') + ggtitle('LMEM Approach') + 
-  scale_fill_grey()
+  facet_wrap(~subj_id) + xlab('Power (W)') + ylab('Density') + ggtitle('LMEM Approach') #+ 
+  #scale_fill_grey()
   
 ggplot(data = dat_sim, aes(x = category, y = pwr, fill = category)) + geom_boxplot() +
   geom_point(position=position_jitterdodge())
@@ -148,8 +148,8 @@ p2 <- dat_sim%>%
   ggplot(aes(x = category, y = meanPow)) +   
   geom_point(aes(color=category)) +
   facet_wrap(~subj_id) + ylab('Mean Power (W)') +
-  xlab('Posture') + ggtitle('Averaged Data Approach') +
-  scale_color_grey() 
+  xlab('Posture') + ggtitle('Averaged Data Approach') #+
+  #scale_color_grey() 
 
 # Figure 1
 p1 | p2
@@ -221,8 +221,6 @@ aovRes$`Pr(>Chisq)`[2]
 
 ## better RM model taken into account
 ```{r}
-
-
 avgDat <- dat_sim %>%
   group_by(subj_id, category) %>%
   summarize( meanPwr = mean(pwr))
